@@ -356,6 +356,24 @@ def main(stdscr, reminders):
                     is_new      = False
                     text_cursor = 0
 
+                elif key == ord("\t"):  # Tab: save title, move to date cell
+                    err = save_reminder(r)
+                    if err:
+                        error_msg = f"save failed: {err}"
+                    else:
+                        saved   = view[row]
+                        view[:] = build_view(reminders, active_tab)
+                        tab_row[active_tab] = next(
+                            (i for i, x in enumerate(view) if x is saved), 0
+                        )
+                        is_new      = False
+                        text_cursor = 0
+                        original    = saved["date"]
+                        if saved["date"] is None:
+                            saved["date"] = date.today()
+                        tab_col[active_tab] = COL_DATE
+                        # editing stays True — now in date edit mode
+
                 elif key == 27:  # Esc
                     if is_new:
                         reminders.remove(r)
@@ -463,6 +481,48 @@ def main(stdscr, reminders):
                         )
                     editing  = False
                     original = None
+
+                elif key == ord("\t"):  # Tab: save, advance to next cell (or exit if rightmost)
+                    if col == COL_DATE and r["date"] is None:
+                        r["hour"] = None
+                    if col == COL_TIME and r["date"] is None and r["hour"] is not None:
+                        r["date"] = date.today()
+                    err = save_reminder(r)
+                    if err:
+                        if col == COL_DATE:
+                            r["date"] = original
+                        else:
+                            r["hour"] = original
+                        error_msg = f"save failed: {err}"
+                    else:
+                        saved = view[row]
+                        items = [x for x in view if not is_sep(x)]
+                        done, undone = _split_sort(items)
+                        if active_tab == TAB_UPCOMING:
+                            result    = list(done)
+                            last_date = None
+                            for x in undone:
+                                if last_date is not None and x["date"] != last_date:
+                                    result.append(SEP)
+                                result.append(x)
+                                last_date = x["date"]
+                            view[:] = result
+                        else:
+                            view[:] = done + undone
+                        tab_row[active_tab] = next(
+                            (i for i, x in enumerate(view) if x is saved), 0
+                        )
+                        if col == COL_DATE:
+                            # advance to time cell
+                            original = saved["hour"]
+                            if saved["hour"] is None:
+                                saved["hour"] = min_hour(saved)
+                            tab_col[active_tab] = COL_TIME
+                            # editing stays True
+                        else:
+                            # COL_TIME is rightmost — just exit
+                            editing  = False
+                            original = None
 
                 elif key == 27:  # Esc — revert (no save)
                     if col == COL_DATE:
