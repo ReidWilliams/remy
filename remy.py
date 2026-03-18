@@ -608,6 +608,8 @@ def main(stdscr, reminders):
                         editing = True
 
 
+os.environ.setdefault("ESCDELAY", "25")  # ms to wait after ESC before treating as standalone key
+
 try:
     reminders = load_reminders()
 except Exception as e:
