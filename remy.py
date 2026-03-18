@@ -8,8 +8,8 @@ from datetime import date, datetime, timedelta
 
 # ── Helper binary ─────────────────────────────────────────────────────────────
 
-HELPER    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remy-helper")
-LIST_NAME = "Reminders"
+HELPER     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remy-helper")
+LIST_NAMES = ["Reminders", "Recurring"]
 
 # ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -30,10 +30,10 @@ TAB_FUTURE   = 2
 
 def load_reminders():
     """Fetch all incomplete reminders from the helper. Returns list of dicts."""
-    result = subprocess.run(
-        [HELPER, "list", "--list", LIST_NAME],
-        capture_output=True, text=True, stdin=subprocess.DEVNULL
-    )
+    cmd = [HELPER, "list"]
+    for name in LIST_NAMES:
+        cmd += ["--list", name]
+    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or "remy-helper list failed")
     items = json.loads(result.stdout)
@@ -44,6 +44,7 @@ def load_reminders():
             "date":      date.fromisoformat(item["date"]) if item.get("date") else None,
             "hour":      item.get("hour"),
             "completed": False,
+            "list":      item["list"],
         }
         for item in items
     ]
@@ -52,7 +53,7 @@ def load_reminders():
 def toggle_completion(r):
     """Toggle completed state, persisting to Reminders. Returns error string or None."""
     new_state = not r.get("completed", False)
-    cmd = [HELPER, "complete" if new_state else "uncomplete", r["id"], "--list", LIST_NAME]
+    cmd = [HELPER, "complete" if new_state else "uncomplete", r["id"], "--list", r.get("list", LIST_NAMES[0])]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
         if result.returncode != 0:
@@ -66,10 +67,12 @@ def toggle_completion(r):
 def save_reminder(r):
     """Create or update a reminder. Sets r['id'] when newly created.
     Returns an error string on failure, or None on success."""
-    date_arg = r["date"].isoformat() if r["date"] else "null"
+    date_arg  = r["date"].isoformat() if r["date"] else "null"
+    list_name = r.get("list", LIST_NAMES[0])
     try:
         if not r.get("id"):
-            cmd = [HELPER, "create", "--list", LIST_NAME,
+            r["list"] = list_name
+            cmd = [HELPER, "create", "--list", list_name,
                    "--title", r["title"], "--date", date_arg]
             if r["hour"] is not None:
                 cmd += ["--hour", str(r["hour"])]
@@ -78,7 +81,7 @@ def save_reminder(r):
                 return result.stderr.strip() or "create failed"
             r["id"] = result.stdout.strip()
         else:
-            cmd = [HELPER, "update", r["id"], "--list", LIST_NAME,
+            cmd = [HELPER, "update", r["id"], "--list", list_name,
                    "--title", r["title"], "--date", date_arg]
             if r["hour"] is not None:
                 cmd += ["--hour", str(r["hour"])]
@@ -232,7 +235,7 @@ def main(stdscr, reminders):
     curses.init_pair(4, curses.COLOR_CYAN, -1)                    # header / status
     curses.init_pair(5, curses.COLOR_RED,  -1)                    # error
     curses.init_pair(6, 8, -1)                                    # day separator dots (dark gray)
-    curses.init_pair(7, 8, -1)                                    # completed item text (dark gray)
+    curses.init_pair(7, 238, -1)                                  # completed item text (dark gray)
 
     active_tab = TAB_TODAY
     view       = build_view(reminders, active_tab)
@@ -553,9 +556,11 @@ def main(stdscr, reminders):
                         )
 
             elif key == ord("n"):
-                new_r = {"id": None, "title": "", "date": date.today() + timedelta(days=1), "hour": 8}
+                _now = datetime.now()
+                _next_hour = _now.hour + 1 if _now.minute > 0 else _now.hour
+                new_r = {"id": None, "title": "", "date": date.today(), "hour": min(_next_hour, 23)}
                 reminders.append(new_r)
-                active_tab = TAB_UPCOMING
+                active_tab = TAB_TODAY
                 view = build_view(reminders, active_tab)
                 tab_row[active_tab] = next(
                     (i for i, x in enumerate(view) if x is new_r), 0

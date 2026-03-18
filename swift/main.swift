@@ -10,17 +10,22 @@ func argValue(_ flag: String) -> String? {
     return args[i + 1]
 }
 
+func argValues(_ flag: String) -> [String] {
+    var result: [String] = []
+    var i = 1
+    while i < args.count - 1 {
+        if args[i] == flag { result.append(args[i + 1]); i += 2 }
+        else { i += 1 }
+    }
+    return result
+}
+
 guard args.count >= 2 else {
     fputs("usage: remy-helper <list|update|create> --list <name> [options]\n", stderr)
     exit(1)
 }
 
-let command  = args[1]
-
-guard let listName = argValue("--list") else {
-    fputs("error: --list <name> required\n", stderr)
-    exit(1)
-}
+let command = args[1]
 
 // ── EventKit access ───────────────────────────────────────────────────────────
 
@@ -43,10 +48,19 @@ guard accessGranted else {
     exit(1)
 }
 
-guard let reminderList = store.calendars(for: .reminder).first(where: { $0.title == listName }) else {
-    let available = store.calendars(for: .reminder).map { $0.title }.joined(separator: ", ")
-    fputs("error: list '\(listName)' not found. available: \(available)\n", stderr)
-    exit(1)
+func resolveCalendars(_ names: [String]) -> [EKCalendar] {
+    let all = store.calendars(for: .reminder)
+    let missing = names.filter { n in !all.contains(where: { $0.title == n }) }
+    if !missing.isEmpty {
+        let available = all.map { $0.title }.joined(separator: ", ")
+        fputs("error: list(s) not found: \(missing.joined(separator: ", ")). available: \(available)\n", stderr)
+        exit(1)
+    }
+    return all.filter { names.contains($0.title) }
+}
+
+func resolveCalendar(_ name: String) -> EKCalendar {
+    return resolveCalendars([name])[0]
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -56,12 +70,13 @@ struct ReminderItem: Codable {
     let title: String
     let date:  String?  // "YYYY-MM-DD" or null
     let hour:  Int?     // 0-23 or null
+    let list:  String
 }
 
-func fetchIncomplete() -> [EKReminder] {
+func fetchIncomplete(calendars: [EKCalendar]) -> [EKReminder] {
     var result: [EKReminder] = []
     let pred = store.predicateForIncompleteReminders(
-        withDueDateStarting: nil, ending: nil, calendars: [reminderList]
+        withDueDateStarting: nil, ending: nil, calendars: calendars
     )
     store.fetchReminders(matching: pred) { reminders in
         result = reminders ?? []
@@ -93,7 +108,13 @@ func reminderToItem(_ r: EKReminder) -> ReminderItem {
             hour = due.hour
         }
     }
-    return ReminderItem(id: r.calendarItemIdentifier, title: r.title ?? "", date: dateStr, hour: hour)
+    return ReminderItem(
+        id:    r.calendarItemIdentifier,
+        title: r.title ?? "",
+        date:  dateStr,
+        hour:  hour,
+        list:  r.calendar?.title ?? ""
+    )
 }
 
 func makeDateComponents(dateStr: String, hour: Int?) -> DateComponents {
@@ -114,8 +135,14 @@ func makeDateComponents(dateStr: String, hour: Int?) -> DateComponents {
 // ── list ──────────────────────────────────────────────────────────────────────
 
 if command == "list" {
-    let items   = fetchIncomplete().map { reminderToItem($0) }
-    let encoder = JSONEncoder()
+    let names = argValues("--list")
+    guard !names.isEmpty else {
+        fputs("error: --list <name> required\n", stderr)
+        exit(1)
+    }
+    let calendars = resolveCalendars(names)
+    let items     = fetchIncomplete(calendars: calendars).map { reminderToItem($0) }
+    let encoder   = JSONEncoder()
     encoder.outputFormatting = .prettyPrinted
     let data = try! encoder.encode(items)
     print(String(data: data, encoding: .utf8)!)
@@ -169,8 +196,12 @@ if command == "list" {
 // ── create ────────────────────────────────────────────────────────────────────
 
 } else if command == "create" {
+    guard let listName = argValue("--list") else {
+        fputs("error: --list <name> required\n", stderr)
+        exit(1)
+    }
     let reminder      = EKReminder(eventStore: store)
-    reminder.calendar = reminderList
+    reminder.calendar = resolveCalendar(listName)
     reminder.title    = argValue("--title") ?? "New Reminder"
 
     if let dateStr = argValue("--date"), dateStr != "null" {
