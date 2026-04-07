@@ -1,3 +1,4 @@
+import calendar
 import curses
 import json
 import os
@@ -15,6 +16,8 @@ LIST_NAMES = ["Reminders", "Recurring"]
 TITLE_WIDTH = 36
 DATE_WIDTH  = 14
 TIME_WIDTH  = 8
+MIN_WIDTH   = TITLE_WIDTH + DATE_WIDTH + TIME_WIDTH + 8  # 66
+MIN_HEIGHT  = 6  # tabs + sep + header + sep + 1 row + status
 
 COL_TITLE = 0
 COL_DATE  = 1
@@ -189,6 +192,7 @@ def draw_help(stdscr):
         ("Editing", [
             ("enter",       "edit selected field"),
             ("← →",         "change value  (date / time)"),
+            ("[ ]",          "skip back / forward one month  (date)"),
             ("enter",       "confirm change"),
             ("esc",         "cancel change"),
         ]),
@@ -221,6 +225,16 @@ def draw_tabs(stdscr, active_tab):
         attr = (curses.color_pair(1) | curses.A_BOLD) if i == active_tab else curses.color_pair(3)
         stdscr.addstr(0, x, label, attr)
         x += len(label) + 1
+
+# ── Key reading ───────────────────────────────────────────────────────────────
+
+def add_months(d, n):
+    """Return date d shifted by n months, clamping the day to the last day of the target month."""
+    month = d.month - 1 + n
+    year  = d.year + month // 12
+    month = month % 12 + 1
+    day   = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -257,6 +271,13 @@ def main(stdscr, reminders):
         stdscr.erase()
         h, w = stdscr.getmaxyx()
 
+        if h < MIN_HEIGHT or w < MIN_WIDTH:
+            msg = f"Window too small ({w}x{h}) — need {MIN_WIDTH}x{MIN_HEIGHT}"
+            stdscr.addstr(0, 0, msg[:w])
+            stdscr.refresh()
+            stdscr.getch()
+            continue
+
         # ── Tabs ──────────────────────────────────────────────────────────────
         draw_tabs(stdscr, active_tab)
         stdscr.addstr(1, 0, "─" * min(TITLE_WIDTH + DATE_WIDTH + TIME_WIDTH + 8, w - 1))
@@ -275,6 +296,8 @@ def main(stdscr, reminders):
         else:
             for i, r in enumerate(view):
                 y = i + 4
+                if y >= h - 1:
+                    break
 
                 if is_sep(r):
                     dot_line = ("·  " * 30)[:TITLE_WIDTH + DATE_WIDTH + TIME_WIDTH + 6]
@@ -325,7 +348,7 @@ def main(stdscr, reminders):
         elif in_text_edit:
             stdscr.addstr(h - 1, 0, "type title   ←→ move cursor   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
         elif editing:
-            stdscr.addstr(h - 1, 0, "↑↓ change   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
+            stdscr.addstr(h - 1, 0, "↑↓ change   [ ] skip month   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
         else:
             stdscr.addstr(h - 1, 0, "? help   q quit"[: w - 1], curses.color_pair(4))
 
@@ -444,6 +467,22 @@ def main(stdscr, reminders):
                                 r["hour"] = None
                             else:
                                 r["hour"] -= 1
+
+                elif key == ord(']'):
+                    if col == COL_DATE:
+                        if r["date"] is None:
+                            r["date"] = add_months(date.today(), 1)
+                        else:
+                            r["date"] = add_months(r["date"], 1)
+
+                elif key == ord('['):
+                    if col == COL_DATE:
+                        if r["date"] is not None:
+                            new_date = add_months(r["date"], -1)
+                            if new_date <= date.today():
+                                r["date"] = date.today()
+                            else:
+                                r["date"] = new_date
 
                 elif key in (curses.KEY_ENTER, 10, 13):
                     # no time without a date
@@ -597,7 +636,7 @@ def main(stdscr, reminders):
                         editing     = True
                     elif col == COL_DATE:
                         original = r["date"]
-                        if r["date"] is None:
+                        if r["date"] is None or r["date"] < date.today():
                             r["date"] = date.today()
                         editing = True
                     else:
