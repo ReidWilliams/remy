@@ -41,7 +41,8 @@ Reminders are grouped into three tabs — **Today**, **Upcoming** (next 7 days),
 | `← →` | Move between columns (Title, Due Date, Time) |
 | `tab` | Cycle tabs |
 | `enter` | Edit selected field |
-| `← →` *(editing date/time)* | Change value |
+| `← →` *(editing date/time)* | Change value by one day / one hour |
+| `[ ]` *(editing date)* | Skip back / forward one month |
 | `enter` *(editing)* | Confirm change |
 | `esc` *(editing)* | Cancel change |
 | `space` | Mark complete / incomplete |
