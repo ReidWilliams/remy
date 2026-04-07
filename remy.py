@@ -597,7 +597,7 @@ def main(stdscr, reminders):
                         editing     = True
                     elif col == COL_DATE:
                         original = r["date"]
-                        if r["date"] is None:
+                        if r["date"] is None or r["date"] < date.today():
                             r["date"] = date.today()
                         editing = True
                     else:
