@@ -16,6 +16,8 @@ LIST_NAMES = ["Reminders", "Recurring"]
 TITLE_WIDTH = 36
 DATE_WIDTH  = 14
 TIME_WIDTH  = 8
+MIN_WIDTH   = TITLE_WIDTH + DATE_WIDTH + TIME_WIDTH + 8  # 66
+MIN_HEIGHT  = 6  # tabs + sep + header + sep + 1 row + status
 
 COL_TITLE = 0
 COL_DATE  = 1
@@ -269,6 +271,13 @@ def main(stdscr, reminders):
         stdscr.erase()
         h, w = stdscr.getmaxyx()
 
+        if h < MIN_HEIGHT or w < MIN_WIDTH:
+            msg = f"Window too small ({w}x{h}) — need {MIN_WIDTH}x{MIN_HEIGHT}"
+            stdscr.addstr(0, 0, msg[:w])
+            stdscr.refresh()
+            stdscr.getch()
+            continue
+
         # ── Tabs ──────────────────────────────────────────────────────────────
         draw_tabs(stdscr, active_tab)
         stdscr.addstr(1, 0, "─" * min(TITLE_WIDTH + DATE_WIDTH + TIME_WIDTH + 8, w - 1))
@@ -287,6 +296,8 @@ def main(stdscr, reminders):
         else:
             for i, r in enumerate(view):
                 y = i + 4
+                if y >= h - 1:
+                    break
 
                 if is_sep(r):
                     dot_line = ("·  " * 30)[:TITLE_WIDTH + DATE_WIDTH + TIME_WIDTH + 6]
