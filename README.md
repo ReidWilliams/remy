@@ -46,6 +46,7 @@ Reminders are grouped into three tabs — **Today**, **Upcoming** (next 7 days),
 | `enter` *(editing)* | Confirm change |
 | `esc` *(editing)* | Cancel change |
 | `space` | Mark complete / incomplete |
+| `r` | Refresh from Reminders |
 | `n` | New reminder |
 | `?` | Help screen |
 | `q` | Quit |

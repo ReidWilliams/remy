@@ -199,6 +199,7 @@ def draw_help(stdscr):
         ("Actions", [
             ("space",       "mark complete / mark incomplete"),
             ("n",           "new reminder  (opens in Upcoming)"),
+            ("r",           "refresh from Reminders"),
         ]),
         ("", [
             ("?",           "back to app"),
@@ -592,6 +593,16 @@ def main(stdscr, reminders):
                         tab_row[active_tab] = next(
                             (i for i, x in enumerate(view) if x is saved), 0
                         )
+
+            elif key == ord("r"):
+                try:
+                    reminders[:] = load_reminders()
+                except Exception as e:
+                    error_msg = f"refresh failed: {e}"
+                else:
+                    view = build_view(reminders, active_tab)
+                    clamped = min(tab_row[active_tab], max(0, len(view) - 1))
+                    tab_row[active_tab] = skip_sep(view, clamped, 1)
 
             elif key == ord("n"):
                 _now = datetime.now()
