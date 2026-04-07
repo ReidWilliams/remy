@@ -1,3 +1,4 @@
+import calendar
 import curses
 import json
 import os
@@ -189,6 +190,7 @@ def draw_help(stdscr):
         ("Editing", [
             ("enter",       "edit selected field"),
             ("← →",         "change value  (date / time)"),
+            ("[ ]",          "skip back / forward one month  (date)"),
             ("enter",       "confirm change"),
             ("esc",         "cancel change"),
         ]),
@@ -221,6 +223,16 @@ def draw_tabs(stdscr, active_tab):
         attr = (curses.color_pair(1) | curses.A_BOLD) if i == active_tab else curses.color_pair(3)
         stdscr.addstr(0, x, label, attr)
         x += len(label) + 1
+
+# ── Key reading ───────────────────────────────────────────────────────────────
+
+def add_months(d, n):
+    """Return date d shifted by n months, clamping the day to the last day of the target month."""
+    month = d.month - 1 + n
+    year  = d.year + month // 12
+    month = month % 12 + 1
+    day   = min(d.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -325,7 +337,7 @@ def main(stdscr, reminders):
         elif in_text_edit:
             stdscr.addstr(h - 1, 0, "type title   ←→ move cursor   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
         elif editing:
-            stdscr.addstr(h - 1, 0, "↑↓ change   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
+            stdscr.addstr(h - 1, 0, "↑↓ change   [ ] skip month   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
         else:
             stdscr.addstr(h - 1, 0, "? help   q quit"[: w - 1], curses.color_pair(4))
 
@@ -444,6 +456,22 @@ def main(stdscr, reminders):
                                 r["hour"] = None
                             else:
                                 r["hour"] -= 1
+
+                elif key == ord(']'):
+                    if col == COL_DATE:
+                        if r["date"] is None:
+                            r["date"] = add_months(date.today(), 1)
+                        else:
+                            r["date"] = add_months(r["date"], 1)
+
+                elif key == ord('['):
+                    if col == COL_DATE:
+                        if r["date"] is not None:
+                            new_date = add_months(r["date"], -1)
+                            if new_date <= date.today():
+                                r["date"] = date.today()
+                            else:
+                                r["date"] = new_date
 
                 elif key in (curses.KEY_ENTER, 10, 13):
                     # no time without a date
