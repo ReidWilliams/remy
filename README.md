@@ -31,6 +31,13 @@ Or use the convenience target (builds then runs):
 make run
 ```
 
+### Flags
+
+| Flag | Description |
+|------|-------------|
+| `--debug` | Read-only mode — loads live data but does not write any changes back to Reminders. A `DEBUG` badge is shown in the status bar. |
+| `--help` | Print usage and exit. |
+
 ## Usage
 
 Reminders are grouped into three tabs — **Today**, **Upcoming** (next 7 days), and **Future**.
@@ -46,6 +53,7 @@ Reminders are grouped into three tabs — **Today**, **Upcoming** (next 7 days),
 | `enter` *(editing)* | Confirm change |
 | `esc` *(editing)* | Cancel change |
 | `space` | Mark complete / incomplete |
+| `>` | Move all Today items to tomorrow (prompts y/n) |
 | `r` | Refresh from Reminders |
 | `n` | New reminder |
 | `?` | Help screen |

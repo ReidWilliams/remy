@@ -1,3 +1,4 @@
+import argparse
 import calendar
 import curses
 import json
@@ -10,6 +11,7 @@ from datetime import date, datetime, timedelta
 
 HELPER     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remy-helper")
 LIST_NAMES = ["Reminders", "Recurring"]
+DEBUG      = False  # set to True via --debug; disables all writes to Reminders
 
 # ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -55,6 +57,9 @@ def load_reminders():
 def toggle_completion(r):
     """Toggle completed state, persisting to Reminders. Returns error string or None."""
     new_state = not r.get("completed", False)
+    if DEBUG:
+        r["completed"] = new_state
+        return None
     cmd = [HELPER, "complete" if new_state else "uncomplete", r["id"], "--list", r.get("list", LIST_NAMES[0])]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
@@ -69,6 +74,11 @@ def toggle_completion(r):
 def save_reminder(r):
     """Create or update a reminder. Sets r['id'] when newly created.
     Returns an error string on failure, or None on success."""
+    if DEBUG:
+        if not r.get("id"):
+            r["id"]   = f"debug-{id(r)}"
+            r["list"] = r.get("list", LIST_NAMES[0])
+        return None
     date_arg  = r["date"].isoformat() if r["date"] else "null"
     list_name = r.get("list", LIST_NAMES[0])
     try:
@@ -199,6 +209,7 @@ def draw_help(stdscr):
         ("Actions", [
             ("space",       "mark complete / mark incomplete"),
             ("n",           "new reminder  (opens in Upcoming)"),
+            (">",           "move all Today items to tomorrow  (y/n to confirm)"),
             ("r",           "refresh from Reminders"),
         ]),
         ("", [
@@ -257,11 +268,13 @@ def main(stdscr, reminders):
     tab_row = [0, 0, 0]
     tab_col = [0, 0, 0]
 
-    editing     = False
-    original    = None
-    text_cursor = 0
-    is_new      = False
-    error_msg   = None  # shown in status bar after a failed save
+    editing         = False
+    original        = None
+    text_cursor     = 0
+    is_new          = False
+    error_msg       = None  # shown in status bar after a failed save
+    confirming_push = False  # waiting for y/n to bulk-push all Today items → tomorrow
+    confirming_push = False  # waiting for y/n to bulk-push today → tomorrow
 
     while True:
         row = tab_row[active_tab]
@@ -346,6 +359,11 @@ def main(stdscr, reminders):
         # ── Status bar ────────────────────────────────────────────────────────
         if error_msg:
             stdscr.addstr(h - 1, 0, error_msg[: w - 1], curses.color_pair(5))
+        elif confirming_push:
+            pushable = [r for r in view if not is_sep(r) and not r.get("completed") and r["date"] is not None]
+            n = len(pushable)
+            prompt = f"Move {n} item{'s' if n != 1 else ''} to tomorrow? (y/n)"
+            stdscr.addstr(h - 1, 0, prompt[: w - 1], curses.color_pair(4))
         elif in_text_edit:
             stdscr.addstr(h - 1, 0, "type title   ←→ move cursor   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
         elif editing:
@@ -354,6 +372,10 @@ def main(stdscr, reminders):
             stdscr.addstr(h - 1, 0, "? help   q quit"[: w - 1], curses.color_pair(4))
 
 
+        if DEBUG:
+            badge = " DEBUG "
+            stdscr.addstr(h - 1, max(0, w - len(badge) - 1), badge, curses.color_pair(2) | curses.A_BOLD)
+
         stdscr.refresh()
         key = stdscr.getch()
 
@@ -361,8 +383,26 @@ def main(stdscr, reminders):
         if error_msg:
             error_msg = None
 
+        # ── Push-confirmation mode ────────────────────────────────────────────
+        if confirming_push:
+            if key in (ord('y'), ord('Y')):
+                tomorrow = date.today() + timedelta(days=1)
+                pushable = [r for r in view if not is_sep(r) and not r.get("completed") and r["date"] is not None]
+                for r in pushable:
+                    r["date"] = tomorrow
+                    err = save_reminder(r)
+                    if err and not error_msg:
+                        error_msg = f"save failed: {err}"
+                confirming_push = False
+                if not error_msg:
+                    view[:] = build_view(reminders, active_tab)
+                    clamped = min(tab_row[active_tab], max(0, len(view) - 1))
+                    tab_row[active_tab] = skip_sep(view, clamped, 1)
+            elif key in (ord('n'), ord('N'), 27):  # n or Esc
+                confirming_push = False
+
         # ── Edit mode ─────────────────────────────────────────────────────────
-        if editing:
+        elif editing:
             r = view[row]
 
             # ── Text edit (title) ──────────────────────────────────────────────
@@ -575,7 +615,7 @@ def main(stdscr, reminders):
                     original = None
 
         # ── Normal mode ───────────────────────────────────────────────────────
-        else:
+        elif not confirming_push:
             if key == ord("q"):
                 break
 
@@ -620,6 +660,12 @@ def main(stdscr, reminders):
                 is_new      = True
                 editing     = True
 
+            elif key == ord(">"):
+                if active_tab == TAB_TODAY:
+                    pushable = [r for r in view if not is_sep(r) and not r.get("completed") and r["date"] is not None]
+                    if pushable:
+                        confirming_push = True
+
             elif key == ord("\t"):
                 active_tab = (active_tab + 1) % 3
                 view = build_view(reminders, active_tab)
@@ -658,6 +704,17 @@ def main(stdscr, reminders):
 
 
 os.environ.setdefault("ESCDELAY", "25")  # ms to wait after ESC before treating as standalone key
+
+parser = argparse.ArgumentParser(
+    description="Keyboard-driven terminal UI for Apple Reminders.",
+)
+parser.add_argument(
+    "--debug",
+    action="store_true",
+    help="run without writing any changes back to Reminders (reads are still live)",
+)
+args = parser.parse_args()
+DEBUG = args.debug
 
 try:
     reminders = load_reminders()
