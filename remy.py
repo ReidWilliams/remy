@@ -132,13 +132,6 @@ def fmt_time(hour):
 
 # ── Sorting / views ───────────────────────────────────────────────────────────
 
-def sort_key(r):
-    today = date.today()
-    d = r["date"] if r["date"] is not None else today
-    h = r["hour"] if r["hour"] is not None else 99
-    return (d, h)
-
-
 def min_hour(r):
     if r["date"] is None or r["date"] == date.today():
         return datetime.now().hour
@@ -208,7 +201,7 @@ def draw_help(stdscr):
         ]),
         ("Actions", [
             ("space",       "mark complete / mark incomplete"),
-            ("n",           "new reminder  (opens in Upcoming)"),
+            ("n",           "new reminder  (opens in Today)"),
             (">",           "move all Today items to tomorrow  (y/n to confirm)"),
             ("r",           "refresh from Reminders"),
         ]),
@@ -274,7 +267,6 @@ def main(stdscr, reminders):
     is_new          = False
     error_msg       = None  # shown in status bar after a failed save
     confirming_push = False  # waiting for y/n to bulk-push all Today items → tomorrow
-    confirming_push = False  # waiting for y/n to bulk-push today → tomorrow
 
     while True:
         row = tab_row[active_tab]
@@ -370,7 +362,6 @@ def main(stdscr, reminders):
             stdscr.addstr(h - 1, 0, "↑↓ change   [ ] skip month   enter confirm   esc cancel"[: w - 1], curses.color_pair(4))
         else:
             stdscr.addstr(h - 1, 0, "? help   q quit"[: w - 1], curses.color_pair(4))
-
 
         if DEBUG:
             badge = " DEBUG "
@@ -615,7 +606,7 @@ def main(stdscr, reminders):
                     original = None
 
         # ── Normal mode ───────────────────────────────────────────────────────
-        elif not confirming_push:
+        else:
             if key == ord("q"):
                 break
 

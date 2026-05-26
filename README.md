@@ -61,10 +61,10 @@ Reminders are grouped into three tabs — **Today**, **Upcoming** (next 7 days),
 
 ## Configuration
 
-The Reminders list name is set at the top of `remy.py`:
+The Reminders lists are set at the top of `remy.py`:
 
 ```python
-LIST_NAME = "Reminders"
+LIST_NAMES = ["Reminders", "Recurring"]
 ```
 
-Change this to match whichever list you want remy to manage.
+Change this to match whichever lists you want remy to manage.
